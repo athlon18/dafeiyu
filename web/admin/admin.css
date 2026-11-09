@@ -89,7 +89,7 @@ button.primary { background: var(--fin); border: 0; color: #06231f; font-weight:
 [class*="oml2d"] { background: transparent !important; box-shadow: none !important; }
 
 .caption {
-  position: absolute; left: 40px; right: 40px; top: 1380px; text-align: center;
+  position: absolute; left: 40px; right: 40px; top: 1180px; text-align: center;
   font-size: 46px; color: #fff; text-shadow: 0 3px 14px rgba(0, 0, 0, .9);
 }
 .credit { position: absolute; left: 34px; bottom: 40px; font-size: 26px; color: rgba(255, 255, 255, .4); }
