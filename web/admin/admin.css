@@ -1,0 +1,102 @@
+:root {
+  --bg: #0d1117;
+  --pane: #151b26;
+  --card: #1c2432;
+  --line: #26303f;
+  --ink: #e6edf3;
+  --dim: #8b98a9;
+  --fin: #3fd0c9;
+  --fin-dim: rgba(63, 208, 201, .14);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app { display: grid; grid-template-columns: 168px 1fr 372px; height: 100vh; }
+
+/* 左：导航 */
+.nav { background: var(--pane); border-right: 1px solid var(--line); padding: 18px 0; display: flex; flex-direction: column; }
+.brand { font-size: 17px; font-weight: 600; letter-spacing: .06em; padding: 0 18px 18px; color: var(--fin); }
+.tab {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  color: var(--dim); padding: 10px 18px; font-size: 14px; cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); background: var(--fin-dim); border-left-color: var(--fin); }
+.status { margin-top: auto; padding: 16px 18px 0; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.status .kv { width: 100%; display: flex; justify-content: space-between; }
+.status .kv b { font-weight: 400; }
+.status .kv span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); align-self: center; }
+.dot.on { background: var(--fin); box-shadow: 0 0 0 3px var(--fin-dim); }
+
+/* 中：配置 */
+.pane { padding: 22px 26px; overflow: auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+h2 { font-size: 15px; font-weight: 600; margin-bottom: 18px; display: flex; gap: 10px; align-items: baseline; }
+.hint { color: var(--dim); font-size: 12px; font-weight: 400; }
+.row { display: grid; grid-template-columns: 92px auto auto; justify-content: start; align-items: center; gap: 10px; margin-bottom: 12px; }
+.row > span { color: var(--dim); }
+.row input, .row select { width: auto; min-width: 190px; }
+.row .num { min-width: 0; width: 96px; }
+.row i { font-style: normal; color: var(--dim); font-size: 12px; }
+input, select {
+  background: var(--card); border: 1px solid var(--line); color: var(--ink);
+  padding: 7px 10px; border-radius: 4px; font-size: 13px; width: 100%;
+}
+input:focus, select:focus { outline: 0; border-color: var(--fin); }
+input::placeholder { color: #55606f; }
+
+.grid { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+.grid th { text-align: left; color: var(--dim); font-weight: 400; font-size: 12px; padding: 0 10px 8px; }
+.grid td { background: var(--card); border-top: 1px solid var(--line); padding: 9px 10px; font-size: 13px; }
+.grid tr:first-child td { border-top: 0; }
+.grid td:nth-child(4) { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+.sw { width: 30px; height: 17px; border-radius: 9px; background: #2b3441; position: relative; display: inline-block; vertical-align: middle; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #6b7787; }
+.sw.on { background: var(--fin-dim); }
+.sw.on::after { left: 15px; background: var(--fin); }
+
+.sub { display: flex; align-items: center; gap: 10px; color: var(--dim); margin-bottom: 14px; }
+.locked { color: #55606f; font-size: 12px; }
+
+button.ghost, button.primary {
+  border-radius: 4px; font-size: 13px; padding: 7px 16px; cursor: pointer;
+}
+button.ghost { background: none; border: 1px solid var(--line); color: var(--dim); }
+button.ghost:hover { color: var(--ink); border-color: var(--fin); }
+button.primary { background: var(--fin); border: 0; color: #06231f; font-weight: 600; }
+
+/* 右：形象台 */
+.stage { background: var(--pane); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.canvas { position: relative; flex: 1; overflow: hidden; background: radial-gradient(120% 90% at 50% 15%, #1b2c3a 0%, #0c1117 70%); }
+/* 预览台照搬主仓叠层的口径：库只认"竖屏 1080×1920 的设计画布"，
+   动 stage 的尺寸会把库自己的算法算乱（实测形象消失），所以整块设计画布再缩进侧栏。 */
+.design { position: absolute; top: 0; left: 0; width: 1080px; height: 1920px;
+  transform: scale(.345); transform-origin: top left; }
+#live2d { position: absolute; inset: 0; }
+#oml2d-stage { position: absolute !important; left: 0 !important; top: 0 !important;
+  width: 100% !important; height: 100% !important; }
+/* 形象定位改在 canvas 上做，不动 stage 容器（同主仓 host.go:1164 的实测结论）。 */
+#oml2d-canvas { transform: translateX(-8%); }
+/* 看板娘的气泡/菜单：实测节点是 id 直挂、类名不止一套，两种都要按住。 */
+#oml2d-tips, #oml2d-status-bar, #oml2d-menus, #oml2d-menu, [id*="oml2d-tip"], [id*="oml2d-menu"] { display: none !important; }
+[class*="oml2d"] { background: transparent !important; box-shadow: none !important; }
+
+.caption {
+  position: absolute; left: 40px; right: 40px; top: 1380px; text-align: center;
+  font-size: 46px; color: #fff; text-shadow: 0 3px 14px rgba(0, 0, 0, .9);
+}
+.credit { position: absolute; left: 34px; bottom: 40px; font-size: 26px; color: rgba(255, 255, 255, .4); }
+.nofallback { position: absolute; top: 45%; left: 0; width: 100%; text-align: center; color: #6b7787; font-size: 30px; }
+.stagefoot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 14px; border-top: 1px solid var(--line); }
