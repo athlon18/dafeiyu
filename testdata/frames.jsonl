@@ -1,0 +1,5 @@
+{"t":0,"kind":"gift","user":"老板甲","gift":"小心心","count":1}
+{"t":3,"kind":"chat","user":"路人乙","content":"今天玩什么","atMe":true}
+{"t":9,"kind":"enter","user":"新人丙"}
+{"t":40,"kind":"gift","user":"老板丁","gift":"嘉年华","count":1}
+{"t":380,"kind":"chat","user":"路人乙","content":"还在吗"}

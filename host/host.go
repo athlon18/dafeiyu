@@ -229,6 +229,12 @@ func (h *Host) Start() {
 }
 
 // Stop 停止并打断正在说的那一句。
+func (h *Host) doneChannel() chan struct{} {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.done
+}
+
 func (h *Host) Stop() {
 	h.mu.Lock()
 	cancel, done := h.cancel, h.done
@@ -432,7 +438,14 @@ func (h *Host) decide(in ChatInput) bool {
 
 // run 串行消费：一句说完再说下一句。这也是"只有一条声带"的实现方式。
 func (h *Host) run(ctx context.Context) {
-	defer close(h.done)
+	// done 必须在进协程时就取定：Stop→Start 之后字段上会是**新一代**的通道，
+	// 老协程再 close(h.done) 等于替新会话关门的，轻则提前放走等待者，重则二次 close panic。
+	done := h.doneChannel()
+	defer func() {
+		if done != nil {
+			close(done)
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -676,6 +689,9 @@ func roomOf(in ChatInput) string {
 }
 
 func originOf(in ChatInput) string {
+	if l := strings.TrimSpace(in.Line); l != "" {
+		return " 自播报" // 引导/收场：背后没有观众，日志不该写成"谁说了什么"
+	}
 	if in.Idle {
 		return " 主动开口"
 	}

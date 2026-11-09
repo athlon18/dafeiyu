@@ -28,6 +28,9 @@ const (
 	KindIdle    Kind = "idle"
 )
 
+// String 让日志/回放里能直接印出事件种类，不必再手写 map。
+func (k Kind) String() string { return string(k) }
+
 type Event struct {
 	Kind          Kind
 	User          string

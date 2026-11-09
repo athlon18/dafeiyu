@@ -1,6 +1,7 @@
 package host
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -67,4 +68,14 @@ func TestLineHonorsGlobalGap(t *testing.T) {
 		t.Fatal("过了全局间隔就该放行")
 	}
 	waitSaid(t, h, "隔够了再说")
+}
+
+// 逐句留痕是合规回溯的唯一凭据：自播报不许写成"某观众说了什么"。
+func TestOriginOfSelfAnnounce(t *testing.T) {
+	if got := originOf(ChatInput{Line: "轮播引导"}); !strings.Contains(got, "自播报") {
+		t.Fatalf("引导句的留痕应标明自播报，实际 %q", got)
+	}
+	if got := originOf(ChatInput{User: "甲", Content: "在吗"}); !strings.Contains(got, "在吗") {
+		t.Fatalf("观众弹幕的留痕应带原文，实际 %q", got)
+	}
 }
