@@ -22,6 +22,7 @@ import (
 	"github.com/athlon18/dafeiyu/host"
 	"github.com/athlon18/dafeiyu/replay"
 	"github.com/athlon18/dafeiyu/rules"
+	"github.com/athlon18/dafeiyu/server"
 	"github.com/athlon18/dafeiyu/source"
 	"github.com/athlon18/dafeiyu/tts"
 )
@@ -32,6 +33,7 @@ func main() {
 	listDev := flag.Bool("list-devices", false, "列出本机音频输出设备")
 	sayText := flag.String("say", "", "试听一句话后退出")
 	quiet := flag.Bool("quiet", false, "只合成不出声，用来验 TTS 链路通不通")
+	serve := flag.Bool("serve", false, "起后台接口（设计图上的试听要用它）")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
@@ -43,6 +45,9 @@ func main() {
 		Model: cfg.TTS.Model, Voice: cfg.TTS.Voice, Speed: cfg.TTS.Speed, TimeoutSec: cfg.TTS.TimeoutSec,
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	if *listDev {
 		devs := tts.OutputDevices()
 		if len(devs) == 0 {
@@ -51,6 +56,13 @@ func main() {
 		}
 		for _, d := range devs {
 			fmt.Printf("%d\t%s\n", d.ID, d.Name)
+		}
+		return
+	}
+
+	if *serve {
+		if err := server.New(cfg, newSpeaker(cfg, tcfg).player).Serve(ctx, cfg.Addr); err != nil {
+			log.Fatal(err)
 		}
 		return
 	}
@@ -89,9 +101,6 @@ func main() {
 	if !sp.player.Available() {
 		log.Printf("警告：%s", tts.NotFoundHint())
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	if *replayPath != "" {
 		runReplay(ctx, cfg, *replayPath)

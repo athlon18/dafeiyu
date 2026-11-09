@@ -30,6 +30,70 @@
       '<div class="nofallback">形象没起来：' + (msg || "未知原因") + '</div>';
   }
 
+  // 试听一句：真打接口，点了必须有反馈（成功带毫秒数，失败显示原因）。
+  // 服务没起时就明写"服务没起"，绝不留一个按下去没反应的哑按钮。
+  var API = "http://127.0.0.1:8420";
+  var btn = document.querySelector(".pane button.wide");
+  var voiceSel = document.querySelectorAll(".pane select")[0];
+  var devSel = document.querySelectorAll(".pane select")[1];
+  if (btn) {
+    btn.addEventListener("click", function () {
+      var label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "合成中…";
+      var url = API + "/tts/preview?text=" + encodeURIComponent("这是一句试听") +
+        "&voice=" + encodeURIComponent(voiceSel ? voiceSel.value : "") +
+        "&device=" + encodeURIComponent(devSel ? devSel.value : "");
+      fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+        btn.disabled = false;
+        if (d.ok) {
+          btn.textContent = label;
+          btn.dataset.state = "ok";
+          btn.title = "合成 " + d.synthMs + "ms · 播出 " + d.playMs + "ms · " + d.device;
+          showLine("这是一句试听");
+        } else {
+          btn.textContent = "失败";
+          btn.dataset.state = "err";
+          btn.title = d.err;
+        }
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = "服务没起";
+        btn.dataset.state = "err";
+        btn.title = "先跑 dafeiyu -serve（默认 " + API + "）：" + e;
+      });
+    });
+  }
+
+  // 字幕跟着试听走一遍，让"点了→她说了"在画面上闭环。
+  var cap = document.querySelector(".caption");
+  var capText = cap ? cap.textContent : "";
+  function showLine(t) {
+    if (!cap) return;
+    cap.textContent = t;
+    speaking = true;
+    setTimeout(function () { cap.textContent = capText; speaking = false; }, 2600);
+  }
+
+  // 输出设备从系统读，不手写：手写的名字和真设备差一个括号就匹配不上，
+  // 试听就会一直"没匹配到设备"，而人只会以为按钮坏了。
+  fetch(API + "/tts/devices").then(function (r) { return r.json(); }).then(function (list) {
+    if (!devSel || !list || !list.length) return;
+    devSel.innerHTML = "";
+    var d = document.createElement("option");
+    d.textContent = "系统默认（跟随 Windows 默认输出）";
+    d.value = "";
+    devSel.appendChild(d);
+    list.forEach(function (it) {
+      // 库把"系统默认"也列成 id=-1 的一项，和上面手加的占位重复，跳过。
+      if (it.id < 0) return;
+      var o = document.createElement("option");
+      o.textContent = it.name;
+      o.value = it.name;
+      devSel.appendChild(o);
+    });
+  }).catch(function () { /* 服务没起就留着占位选项，试听按钮自己会说"服务没起" */ });
+
   if (!window.OML2D || !window.OML2D.loadOml2d) { fallback("oml.min.js 没加载"); return; }
 
   try {
@@ -48,7 +112,7 @@
     fallback(String(e && e.message || e)); return;
   }
 
-  var core = null, hooked = null, phase = 0, held = false, reads = "";
+  var core = null, hooked = null, held = false, reads = "", speaking = false, phase = 0;
 
   function writeHold() {
     if (!core) return false;
@@ -69,8 +133,8 @@
     if (!core) return;
     held = writeHold() || held;
     // 设计图里"正在说话"是假的：固定正弦当包络，只为让嘴动起来。
-    phase += 0.3;
-    var val = 0.5 * (0.5 + 0.5 * Math.sin(phase));
+    phase += speaking ? 0.5 : 0.18;
+    var val = speaking ? Math.abs(Math.sin(phase)) * 0.85 : 0.5 * (0.5 + 0.5 * Math.sin(phase)) * 0.5;
     try { core.setParameterValueById("ParamMouthOpenY", val); } catch (e) {}
   }
 
