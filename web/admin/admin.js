@@ -4,10 +4,9 @@
 // 规矩：页面上每个可点的东西都必须有后端，且**结果要看得见**。
 // 上一版 保存/闭麦/加一条 三个按钮没有处理器（点了 0 请求），那是假控件。
 (function () {
-  var API = "http://127.0.0.1:8420";
-  var MODEL = "../../data/host/model/大肥鱼/大肥鱼.model3.json";
-  // 作者把水印烤进了贴图，内置"水印消除"表情=把 Paramcol_3 置 1（已核 EXP/13 水印消除.exp3.json）。
-  var HOLD = { Paramcol_3: 1 };
+  var API = "";  // 同源：页面由二进制自己提供（/admin），不再另开静态服务端口
+  var MODEL = "";        // 由 /state 下发：换皮不用改页面
+  var HOLD = {};         // 要每帧按住的参数，同样由 /state 下发
 
   var $ = function (sel) { return document.querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
@@ -211,12 +210,19 @@
 
   if (!window.OML2D || !window.OML2D.loadOml2d) { fallback("oml.min.js 没加载"); return; }
 
-  try {
-    window.__oml = window.OML2D.loadOml2d({
-      models: [{ path: MODEL, scale: 0.4, position: [0, 0], stageStyle: { width: "1080px", height: "1920px" } }],
-      menus: { disable: true }, tips: { disable: true }, statusBar: { disable: true }
-    });
-  } catch (e) { fallback(String((e && e.message) || e)); return; }
+  fetch("/state").then(function (r) { return r.json(); }).then(function (d) {
+    var name = encodeURIComponent((d && d.model) || "大肥鱼");
+    MODEL = "/model/" + name + "/" + name + ".model3.json";
+    if (d && d.params) HOLD = d.params;
+    try {
+      window.__oml = window.OML2D.loadOml2d({
+        models: [{ path: MODEL, scale: 0.4, position: [0, 0], stageStyle: { width: "372px", height: "820px" } }],
+        menus: { disable: true }, tips: { disable: true }, statusBar: { disable: true }
+      });
+    } catch (e) { fallback(String((e && e.message) || e)); return; }
+    setInterval(tick, 50);
+    tick();
+  });
 
   var core = null, hooked = null, held = false, reads = "", phase = 0;
 
@@ -261,9 +267,6 @@
     }
     adopt();
   }
-  setInterval(tick, 50);
-  tick();
-
   window.__wm = function () { return { held: held, reads: reads, hasCore: !!core }; };
 
   setTimeout(function () {

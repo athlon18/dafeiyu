@@ -24,7 +24,9 @@ import (
 	"github.com/athlon18/dafeiyu/replay"
 	"github.com/athlon18/dafeiyu/rules"
 	"github.com/athlon18/dafeiyu/server"
+	"github.com/athlon18/dafeiyu/skin"
 	"github.com/athlon18/dafeiyu/source"
+	"github.com/athlon18/dafeiyu/stage"
 	"github.com/athlon18/dafeiyu/store"
 	"github.com/athlon18/dafeiyu/tts"
 )
@@ -82,8 +84,9 @@ func main() {
 	}
 
 	if *serve {
-		sp := &speaker{player: tts.NewPlayer(), cfg: tcfg}
-		if err := server.New(db, sp.player).Serve(ctx, cfg.Addr); err != nil {
+		stg := stage.New(cfg.HostModel, skin.Credit(cfg.HostModel), skin.Params(cfg.HostModel))
+		sp := &speaker{player: tts.NewPlayer(), cfg: tcfg, stage: stg}
+		if err := server.New(db, sp.player).WithStage(stg).WithAssets(filepath.Join(cfg.DataDir, "host")).Serve(ctx, cfg.Addr); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -121,7 +124,9 @@ func main() {
 		log.Printf("未配 LLM：弹幕回话这一段会安静，其余靠配好的话术")
 	}
 
+	stg := stage.New(cfg.HostModel, skin.Credit(cfg.HostModel), skin.Params(cfg.HostModel))
 	sp := newSpeaker(st.Voice.Device, tcfg)
+	sp.stage = stg
 	if !sp.player.Available() {
 		log.Printf("警告：%s", tts.NotFoundHint())
 	}
@@ -136,7 +141,10 @@ func main() {
 	defer h.Stop()
 
 	go func() {
-		srv := server.New(db, sp.player).OnChange(func(next store.Settings) { applyLive(next, cfg, lr, h) })
+		srv := server.New(db, sp.player).
+			WithStage(stg).
+			WithAssets(filepath.Join(cfg.DataDir, "host")).
+			OnChange(func(next store.Settings) { applyLive(next, cfg, lr, h) })
 		if err := srv.Serve(ctx, cfg.Addr); err != nil {
 			log.Printf("后台接口退出：%v", err)
 		}
@@ -397,6 +405,7 @@ func (s *recordingSpeaker) count() int {
 type speaker struct {
 	player *tts.Player
 	cfg    tts.Config
+	stage  *stage.Stage // nil=不登记口型（回放/纯合成自检）
 }
 
 func newSpeaker(device string, tcfg tts.Config) *speaker {
@@ -421,6 +430,13 @@ func (s *speaker) Say(ctx context.Context, text string) error {
 	if !s.player.Available() {
 		return fmt.Errorf("%s", tts.NotFoundHint())
 	}
-	_, err := tts.Speak(ctx, s.player, s.cfg, text, tts.SpeakOptions{})
+	// 口型包络登记在"每段真正出声前"：合成那两秒不该提前张嘴，被打断也要成对收尾。
+	opts := tts.SpeakOptions{}
+	if s.stage != nil {
+		s.stage.Begin(text)
+		opts.OnPlayStart = func(res tts.Result) { s.stage.Segment(res) }
+		opts.OnPlayEnd = s.stage.End
+	}
+	_, err := tts.Speak(ctx, s.player, s.cfg, text, opts)
 	return err
 }

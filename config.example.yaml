@@ -2,6 +2,7 @@ roomId: ""
 cookie: ""
 addr: ":8420"
 dataDir: data
+hostModel: 大肥鱼      # 画面上这张皮；授权/署名/水印参数在 skin 包里
 
 atNames:
   - 大肥鱼

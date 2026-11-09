@@ -1,0 +1,44 @@
+/* OBS 浏览器源叠层：整页必须 transparent。
+   任何一层底色在 OBS 里都会变成角色背后一块板——这是硬约束，不是审美选择。 */
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  background: transparent; background-color: transparent;
+  overflow: hidden;
+}
+
+#live2d { position: absolute; inset: 0; }
+
+/* 库把舞台挂在 body 下、并按 16:9 反推尺寸，所以舞台固定写设计画布 1080×1920，
+   位置只动 canvas：动 stage 的 left/right 会把库自己的尺寸算乱（实测形象消失）。 */
+/* 舞台固定 1080×1920（库只在这个尺寸下算得对），缩放/居中由 overlay.js 写 transform。
+   刻意不动 #oml2d-canvas：主仓实测动它的 left/right 会让库把自己尺寸算乱、形象直接消失。 */
+#oml2d-stage {
+  position: absolute !important; left: 0 !important; top: 0 !important;
+  width: 1080px !important; height: 1920px !important; background: transparent !important;
+}
+
+/* 看板娘自带的提示气泡/菜单/状态条在直播画面里是噪声。类名不止一套，单写一个选择器会漏。 */
+[class*="oml2d-tips"], [class*="-tips"], [class*="oml2d-status"], [class*="oml2d-menus"],
+[class*="oml2d-menu"], [class*="oml2d-loading"], [class*="oml2d-icon"] { display: none !important; }
+[class*="oml2d"] { background: transparent !important; box-shadow: none !important; }
+
+/* 字幕按设计画布 1080×1920 出字，跟着 OBS 浏览器源一起缩放。 */
+.caption {
+  position: absolute; left: 40px; right: 40px; top: 1300px;
+  text-align: center; font: 500 46px/1.35 "Microsoft YaHei", sans-serif;
+  color: #fff; text-shadow: 0 3px 14px rgba(0, 0, 0, .9);
+  opacity: 0; transition: opacity .25s;
+}
+.caption.show { opacity: 1; }
+
+/* 公皮作者要求直播署名（口径见 model 授权表），这行小字就是兑现方式。 */
+/* 挂错尺寸时的自证：画面上一片空白只会让人以为边车没起，这里直接把原因写出来。 */
+.warn {
+  position: absolute; left: 40px; right: 40px; top: 60px; text-align: center;
+  font: 500 40px/1.4 "Microsoft YaHei", sans-serif; color: #ffd98a;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, .9);
+}
+.credit {
+  position: absolute; left: 34px; bottom: 40px;
+  font: 26px/1.2 "Microsoft YaHei", sans-serif; color: rgba(255, 255, 255, .4);
+}

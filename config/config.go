@@ -11,8 +11,9 @@ import (
 type Config struct {
 	RoomID     string   `yaml:"roomId"`
 	Cookie     string   `yaml:"cookie"` // 留空=游客 ttwid
-	Addr       string   `yaml:"addr"`   // 第一刀不起 HTTP，先占位
+	Addr       string   `yaml:"addr"`
 	DataDir    string   `yaml:"dataDir"`
+	HostModel  string   `yaml:"hostModel"` // 画面上那张皮；授权口径见 skin 包
 	AtNames    []string `yaml:"atNames"`    // 主播昵称别名，判 @我 用
 	GuardWords []string `yaml:"guardWords"` // 本地词表闸
 
@@ -75,6 +76,7 @@ func Default() Config {
 	return Config{
 		Addr:         ":8420",
 		DataDir:      "data",
+		HostModel:    "大肥鱼",
 		EnterLine:    "欢迎 {user} 进入直播间",
 		OfflineLines: append([]string(nil), DefaultOfflineLines...),
 		LLM: LLM{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o-mini"},

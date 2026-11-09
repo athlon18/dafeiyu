@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/athlon18/dafeiyu/stage"
 	"github.com/athlon18/dafeiyu/store"
 	"github.com/athlon18/dafeiyu/tts"
 )
@@ -21,6 +22,8 @@ import (
 type Server struct {
 	st     *store.Store
 	player *tts.Player
+	stage  *stage.Stage
+	assets string
 	// apply 把刚存下的配置推给**正在跑**的边车。没有它，"保存"只是改库，
 	// 主播现场听到的还是旧话术——那页面就是个摆设。
 	apply func(store.Settings)
@@ -36,6 +39,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/mute", s.mute)
 	mux.HandleFunc("/tts/preview", s.preview)
 	mux.HandleFunc("/tts/devices", s.devices)
+	s.registerStatic(mux)
 }
 
 // cors 放开本机跨源：后台页可能由静态服务打开，接口在另一个端口。
@@ -168,13 +172,6 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 		Model: cfg.Voice.Model, Voice: cfg.Voice.Timbre, Speed: cfg.Voice.Speed, TimeoutSec: 30,
 	}
 	t0 := time.Now()
-	out, err := tts.Synthesize(r.Context(), tcfg, text)
-	if err != nil {
-		res.Err = "合成失败：" + err.Error()
-		jsonOut(w, http.StatusOK, res)
-		return
-	}
-	res.SynthMs = time.Since(t0).Milliseconds()
 
 	dev := cfg.Voice.Device
 	if q := strings.TrimSpace(r.URL.Query().Get("device")); q != "" {
@@ -190,13 +187,22 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 		tts.ApplyRoute(s.player)
 		res.Device = d.Name
 	}
+	// 试听走和直播同一条出口：登记口型包络 → 分段合成 → 出声。
+	// 只调 Synthesize+Play 的话，后台预览里她的嘴不会动，"试听"就成了半条链路。
+	opts := tts.SpeakOptions{}
+	if s.stage != nil {
+		s.stage.Begin(text)
+		opts.OnPlayStart = func(out tts.Result) { s.stage.Segment(out) }
+		opts.OnPlayEnd = s.stage.End
+	}
 	t1 := time.Now()
 	// 播出失败必须带回来：waveOut 打不开某台设备时以前是静默"播完"，于是"试听"点了没任何信号。
-	if err := s.player.Play(r.Context(), out.Audio, out.MIME); err != nil {
+	if _, err := tts.Speak(r.Context(), s.player, tcfg, text, opts); err != nil {
 		res.Err = "播出失败：" + err.Error()
 		jsonOut(w, http.StatusOK, res)
 		return
 	}
+	res.SynthMs = time.Since(t0).Milliseconds()
 	res.PlayMs = time.Since(t1).Milliseconds()
 	res.OK = true
 	jsonOut(w, http.StatusOK, res)
