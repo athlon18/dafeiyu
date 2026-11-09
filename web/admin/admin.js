@@ -1,18 +1,173 @@
-// 设计图脚本：用真·大肥鱼皮把右侧形象台活起来。
-// 皮与渲染库都在 data/host/ 下（不入库，授权见 README），故本页面必须经 http 打开。
+// 后台页脚本：配置读写 + 试听 + 真·大肥鱼形象台。
+// 皮与渲染库在 data/host/ 下（不入库，授权见 README），故本页面必须经 http 打开。
 //
-// 加载写法照搬主仓已验证的叠层（controller/host.go:2162 boot）：
-//  1. 配置键是 models[]，舞台尺寸固定写成竖屏 1080×1920——库会按 16:9 反推宽度，给小尺寸就压扁。
-//  2. 库把 #oml2d-stage 挂到 body 下，必须周期搬进侧栏，否则它会铺满整页。
-//  3. coreModel 是**函数**不是属性（主仓 host.go:2238 用的是 im.coreModel）：
-//     当属性比对会永远不相等，钩子一次都挂不上——水印就是这么漏掉的。
+// 规矩：页面上每个可点的东西都必须有后端，且**结果要看得见**。
+// 上一版 保存/闭麦/加一条 三个按钮没有处理器（点了 0 请求），那是假控件。
 (function () {
+  var API = "http://127.0.0.1:8420";
   var MODEL = "../../data/host/model/大肥鱼/大肥鱼.model3.json";
   // 作者把水印烤进了贴图，内置"水印消除"表情=把 Paramcol_3 置 1（已核 EXP/13 水印消除.exp3.json）。
   var HOLD = { Paramcol_3: 1 };
 
+  var $ = function (sel) { return document.querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+  var els = {
+    room: $$(".pane input")[0],
+    cookie: $$(".pane input")[1],
+    timbre: $$(".pane select")[0],
+    device: $$(".pane select")[1],
+    tbody: $(".grid tbody"),
+    preview: $$(".pane button.wide")[0],
+    add: $$(".pane button.wide")[1],
+    mute: $(".headbtns .ghost"),
+    save: $(".headbtns .primary")
+  };
+
+  // 接口通不通，页面上要有一处能看出来——不许让人靠"点了没反应"去猜。
+  function setLive(text, ok) {
+    $(".head .live").innerHTML = '<span class="dot ' + (ok ? "on" : "off") + '"></span>' + text;
+  }
+
+  function flash(btn, ok, msg) {
+    btn.title = msg;
+    btn.dataset.state = ok ? "ok" : "err";
+    if (!ok) {
+      var old = btn.textContent;
+      btn.textContent = "失败";
+      setTimeout(function () { btn.textContent = old; }, 2600);
+    }
+  }
+
+  function row(moment, line, enabled) {
+    var tr = document.createElement("tr");
+    tr.innerHTML = '<td><input class="m" value=""></td><td><input class="l" value=""></td><td class="sw on"></td>';
+    tr.querySelector(".m").value = moment || "";
+    tr.querySelector(".l").value = line || "";
+    if (!enabled) tr.querySelector(".sw").classList.remove("on");
+    tr.querySelector(".sw").addEventListener("click", function () {
+      this.classList.toggle("on");
+      dirty = true;
+    });
+    $$("input", tr).forEach(function (i) { i.addEventListener("input", function () { dirty = true; }); });
+    return tr;
+  }
+
+  function collect() {
+    return {
+      roomId: els.room.value.trim(),
+      cookie: els.cookie.value,
+      engine: "openai",
+      baseUrl: "http://127.0.0.1:9880/v1",
+      apiKey: "",
+      model: "tts-1",
+      timbre: els.timbre ? els.timbre.value : "",
+      speed: 1.0,
+      device: els.device ? els.device.value : "",
+      rules: $$(".grid tbody tr").map(function (tr) {
+        return {
+          moment: tr.querySelector(".m").value.trim(),
+          line: tr.querySelector(".l").value.trim(),
+          enabled: tr.querySelector(".sw").classList.contains("on")
+        };
+      })
+    };
+  }
+
+  function render(cfg) {
+    els.room.value = cfg.roomId || "";
+    els.cookie.value = cfg.cookie || "";
+    if (cfg.timbre && els.timbre) {
+      var hit = $$("option", els.timbre).some(function (o) { return o.value === cfg.timbre; });
+      if (hit) els.timbre.value = cfg.timbre;
+    }
+    if (!cfg.rules || !cfg.rules.length) return;
+    els.tbody.innerHTML = "";
+    cfg.rules.forEach(function (r) { els.tbody.appendChild(row(r.moment, r.line, r.enabled)); });
+  }
+
+  var dirty = false;
+
+  els.save.addEventListener("click", function () {
+    els.save.disabled = true;
+    fetch(API + "/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collect())
+    }).then(function (r) {
+      return r.json().then(function (d) { return { code: r.status, d: d }; });
+    }).then(function (x) {
+      els.save.disabled = false;
+      if (x.code === 200 && x.d.ok) {
+        dirty = false;
+        flash(els.save, true, "已存 " + x.d.rules + " 条规则");
+        setLive("已存 " + x.d.rules + " 条规则", true);
+      } else {
+        flash(els.save, false, x.d.err || "保存失败（HTTP " + x.code + "）");
+        setLive("保存失败：" + (x.d.err || "HTTP " + x.code), false);
+      }
+    }).catch(function (e) {
+      els.save.disabled = false;
+      flash(els.save, false, "服务没起：" + e);
+      setLive("服务没起（先跑 dafeiyu -serve）", false);
+    });
+  });
+
+  var muted = false;
+  function paintMute() {
+    els.mute.textContent = muted ? "已闭麦" : "闭麦";
+    els.mute.dataset.state = muted ? "err" : "ok";
+  }
+  els.mute.addEventListener("click", function () {
+    fetch(API + "/mute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ muted: !muted })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok) { muted = !!d.muted; paintMute(); } else { flash(els.mute, false, d.err || "没改成"); }
+    }).catch(function (e) { flash(els.mute, false, "服务没起：" + e); });
+  });
+
+  els.add.addEventListener("click", function () {
+    var tr = row("", "", true);
+    els.tbody.appendChild(tr);
+    dirty = true;
+    tr.querySelector(".m").focus();
+  });
+
+  els.preview.addEventListener("click", function () {
+    var label = els.preview.textContent;
+    els.preview.disabled = true;
+    els.preview.textContent = "合成中…";
+    fetch(API + "/tts/preview?text=" + encodeURIComponent("这是一句试听"))
+      .then(function (r) { return r.json(); }).then(function (d) {
+        els.preview.disabled = false;
+        els.preview.textContent = label;
+        if (d.ok) {
+          flash(els.preview, true, "合成 " + d.synthMs + "ms · 播出 " + d.playMs + "ms · " + d.device);
+          say("这是一句试听");
+        } else {
+          flash(els.preview, false, d.err || "失败");
+        }
+      }).catch(function (e) {
+        els.preview.disabled = false;
+        els.preview.textContent = label;
+        flash(els.preview, false, "服务没起：" + e);
+      });
+  });
+
+  var cap = $(".caption");
+  var capDefault = cap ? cap.textContent : "";
+  var speaking = false;
+  function say(text) {
+    if (!cap) return;
+    cap.textContent = text;
+    speaking = true;
+    setTimeout(function () { cap.textContent = capDefault; speaking = false; }, 2600);
+  }
+
   function hush() {
-    document.querySelectorAll('[class*="oml2d"]').forEach(function (el) {
+    $$('[class*="oml2d"]').forEach(function (el) {
       var n = (el.className || "") + " " + (el.id || "");
       if (/tips|status|menu|loading|icon/.test(n)) el.style.setProperty("display", "none", "important");
     });
@@ -20,99 +175,50 @@
 
   function adopt() {
     var st = document.getElementById("oml2d-stage");
-    var box = document.getElementById("live2d");
-    if (st && box && st.parentElement !== box) box.appendChild(st);
+    if (st && st.parentElement !== $("#live2d")) $("#live2d").appendChild(st);
     hush();
   }
 
   function fallback(msg) {
-    document.getElementById("live2d").innerHTML =
-      '<div class="nofallback">形象没起来：' + (msg || "未知原因") + '</div>';
+    $("#live2d").innerHTML = '<div class="nofallback">形象没起来：' + (msg || "未知原因") + "</div>";
   }
 
-  // 试听一句：真打接口，点了必须有反馈（成功带毫秒数，失败显示原因）。
-  // 服务没起时就明写"服务没起"，绝不留一个按下去没反应的哑按钮。
-  var API = "http://127.0.0.1:8420";
-  var btn = document.querySelector(".pane button.wide");
-  var voiceSel = document.querySelectorAll(".pane select")[0];
-  var devSel = document.querySelectorAll(".pane select")[1];
-  if (btn) {
-    btn.addEventListener("click", function () {
-      var label = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = "合成中…";
-      var url = API + "/tts/preview?text=" + encodeURIComponent("这是一句试听") +
-        "&voice=" + encodeURIComponent(voiceSel ? voiceSel.value : "") +
-        "&device=" + encodeURIComponent(devSel ? devSel.value : "");
-      fetch(url).then(function (r) { return r.json(); }).then(function (d) {
-        btn.disabled = false;
-        if (d.ok) {
-          btn.textContent = label;
-          btn.dataset.state = "ok";
-          btn.title = "合成 " + d.synthMs + "ms · 播出 " + d.playMs + "ms · " + d.device;
-          showLine("这是一句试听");
-        } else {
-          btn.textContent = "失败";
-          btn.dataset.state = "err";
-          btn.title = d.err;
-        }
-      }).catch(function (e) {
-        btn.disabled = false;
-        btn.textContent = "服务没起";
-        btn.dataset.state = "err";
-        btn.title = "先跑 dafeiyu -serve（默认 " + API + "）：" + e;
-      });
-    });
-  }
-
-  // 字幕跟着试听走一遍，让"点了→她说了"在画面上闭环。
-  var cap = document.querySelector(".caption");
-  var capText = cap ? cap.textContent : "";
-  function showLine(t) {
-    if (!cap) return;
-    cap.textContent = t;
-    speaking = true;
-    setTimeout(function () { cap.textContent = capText; speaking = false; }, 2600);
-  }
-
-  // 输出设备从系统读，不手写：手写的名字和真设备差一个括号就匹配不上，
-  // 试听就会一直"没匹配到设备"，而人只会以为按钮坏了。
+  // 设备清单从系统读，不手写：手写的名字跟真设备差一个括号就匹配不上，试听会一直报"没匹配到设备"。
   fetch(API + "/tts/devices").then(function (r) { return r.json(); }).then(function (list) {
-    if (!devSel || !list || !list.length) return;
-    devSel.innerHTML = "";
-    var d = document.createElement("option");
-    d.textContent = "系统默认（跟随 Windows 默认输出）";
-    d.value = "";
-    devSel.appendChild(d);
-    list.forEach(function (it) {
-      // 库把"系统默认"也列成 id=-1 的一项，和上面手加的占位重复，跳过。
-      if (it.id < 0) return;
-      var o = document.createElement("option");
-      o.textContent = it.name;
-      o.value = it.name;
-      devSel.appendChild(o);
+    if (list && list.length && els.device) {
+      els.device.innerHTML = "";
+      var d = document.createElement("option");
+      d.textContent = "系统默认（跟随 Windows 默认输出）";
+      d.value = "";
+      els.device.appendChild(d);
+      list.forEach(function (it) {
+        if (it.id < 0) return; // "系统默认"在库里也是 id=-1 一项，和上面占位重复
+        var o = document.createElement("option");
+        o.textContent = it.name;
+        o.value = it.name;
+        els.device.appendChild(o);
+      });
+    }
+    return fetch(API + "/config").then(function (r) { return r.json(); }).then(function (cfg) {
+      render(cfg);
+      muted = !!cfg.muted;
+      paintMute();
+      setLive("已连 " + (cfg.roomId || "未填房间号") + " · 库里 " + ((cfg.rules || []).length) + " 条规则", true);
     });
-  }).catch(function () { /* 服务没起就留着占位选项，试听按钮自己会说"服务没起" */ });
+  }).catch(function () {
+    setLive("服务没起：先跑 dafeiyu -serve", false);
+  });
 
   if (!window.OML2D || !window.OML2D.loadOml2d) { fallback("oml.min.js 没加载"); return; }
 
   try {
     window.__oml = window.OML2D.loadOml2d({
-      models: [{
-        path: MODEL,
-        scale: 0.4,
-        position: [0, 0],
-        stageStyle: { width: "1080px", height: "1920px" }
-      }],
-      menus: { disable: true },
-      tips: { disable: true },
-      statusBar: { disable: true }
+      models: [{ path: MODEL, scale: 0.4, position: [0, 0], stageStyle: { width: "1080px", height: "1920px" } }],
+      menus: { disable: true }, tips: { disable: true }, statusBar: { disable: true }
     });
-  } catch (e) {
-    fallback(String(e && e.message || e)); return;
-  }
+  } catch (e) { fallback(String((e && e.message) || e)); return; }
 
-  var core = null, hooked = null, held = false, reads = "", speaking = false, phase = 0;
+  var core = null, hooked = null, held = false, reads = "", phase = 0;
 
   function writeHold() {
     if (!core) return false;
@@ -132,26 +238,24 @@
   function apply() {
     if (!core) return;
     held = writeHold() || held;
-    // 设计图里"正在说话"是假的：固定正弦当包络，只为让嘴动起来。
     phase += speaking ? 0.5 : 0.18;
-    var val = speaking ? Math.abs(Math.sin(phase)) * 0.85 : 0.5 * (0.5 + 0.5 * Math.sin(phase)) * 0.5;
+    var val = speaking ? Math.abs(Math.sin(phase)) * 0.85 : 0.25 * (0.5 + 0.5 * Math.sin(phase));
     try { core.setParameterValueById("ParamMouthOpenY", val); } catch (e) {}
   }
 
-  // 不靠库的事件钩子（挂没挂上看不见就是哑的）：自己按帧写，写完读回来。
-  // 库在 resize 时会换模型实例，所以每轮都重新认一次当前实例。
+  // 库在 resize 时会换模型实例，所以每轮重新认一次当前实例。
   function tick() {
     var oml = window.__oml;
     var mod = oml && oml.models && oml.models.model;
     var im = mod && mod.internalModel;
     var c = im && typeof im.coreModel === "function" ? im.coreModel() : (im && im.coreModel);
     if (c && c !== core) {
-      core = c; hooked = im;
-      try { im.on("beforeModelUpdate", apply); } catch (e) {} // 有钩子更好，没有也不靠它
+      core = c;
+      hooked = im;
+      try { im.on("beforeModelUpdate", apply); } catch (e) {}
     }
     apply();
     if (core && !held) {
-      // 参数写不动就退回表情：表情本身就是把同一个参数置 1。
       try { mod && mod.expression && mod.expression("13 水印消除"); } catch (e) {}
       try { mod && mod.setExpression && mod.setExpression("13 水印消除"); } catch (e) {}
     }
@@ -164,9 +268,7 @@
 
   setTimeout(function () {
     if (!document.querySelector("#live2d canvas")) fallback("模型没渲染出来");
-    // 水印到底关掉没有，得能在画面上自证，不能只说"我写了参数"。
-    var b = document.querySelector(".credit");
-    if (b) b.textContent = held ? "模型：Mao绒绒家园 · " + reads
-      : "模型：Mao绒绒家园 · 水印未消除 " + reads;
+    var b = $(".credit");
+    if (b) b.textContent = held ? "模型：Mao绒绒家园 · " + reads : "模型：Mao绒绒家园 · 水印未消除 " + reads;
   }, 6000);
 })();

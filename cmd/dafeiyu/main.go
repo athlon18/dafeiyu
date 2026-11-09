@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"github.com/athlon18/dafeiyu/rules"
 	"github.com/athlon18/dafeiyu/server"
 	"github.com/athlon18/dafeiyu/source"
+	"github.com/athlon18/dafeiyu/store"
 	"github.com/athlon18/dafeiyu/tts"
 )
 
@@ -40,9 +42,28 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// YAML 只当**出厂种子**：库空时灌一次，之后一切现场改动都在库里（后台页改的就是库）。
+	// 反过来让 YAML 覆盖库，会出现"页面改了、重启又变回去"。
+	db, err := store.Open(filepath.Join(cfg.DataDir, "dafeiyu.db"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if empty, err := db.Empty(); err != nil {
+		log.Fatal(err)
+	} else if empty {
+		if err := db.Save(seed(cfg)); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("库里没有配置，已按 %s 的出厂值播种", *cfgPath)
+	}
+	st, err := db.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
 	tcfg := tts.Config{
-		Kind: tts.Kind(cfg.TTS.Kind), BaseURL: cfg.TTS.BaseURL, APIKey: cfg.TTS.APIKey,
-		Model: cfg.TTS.Model, Voice: cfg.TTS.Voice, Speed: cfg.TTS.Speed, TimeoutSec: cfg.TTS.TimeoutSec,
+		Kind: tts.Kind(st.Voice.Engine), BaseURL: st.Voice.BaseURL, APIKey: st.Voice.APIKey,
+		Model: st.Voice.Model, Voice: st.Voice.Timbre, Speed: st.Voice.Speed, TimeoutSec: cfg.TTS.TimeoutSec,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -61,7 +82,8 @@ func main() {
 	}
 
 	if *serve {
-		if err := server.New(cfg, newSpeaker(cfg, tcfg).player).Serve(ctx, cfg.Addr); err != nil {
+		sp := &speaker{player: tts.NewPlayer(), cfg: tcfg}
+		if err := server.New(db, sp.player).Serve(ctx, cfg.Addr); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -75,16 +97,18 @@ func main() {
 			fmt.Println("合成成功（未出声）")
 			return
 		}
-		if err := newSpeaker(cfg, tcfg).Say(context.Background(), *sayText); err != nil {
+		if err := newSpeaker(st.Voice.Device, tcfg).Say(context.Background(), *sayText); err != nil {
 			log.Fatal(err)
 		}
 		return
 	}
 
-	rl, err := rules.New(rulesFrom(cfg))
+	rl, err := rules.New(rulesFrom(st, cfg))
 	if err != nil {
 		log.Fatal(err)
 	}
+	// 后台页保存后要换一张新表，所以线上用的是一张"可替换"的表，不是固定指针。
+	lr := &liveRules{rl: rl}
 
 	var th host.Thinker
 	if b := brain.New(brain.Config{
@@ -97,29 +121,36 @@ func main() {
 		log.Printf("未配 LLM：弹幕回话这一段会安静，其余靠配好的话术")
 	}
 
-	sp := newSpeaker(cfg, tcfg)
+	sp := newSpeaker(st.Voice.Device, tcfg)
 	if !sp.player.Available() {
 		log.Printf("警告：%s", tts.NotFoundHint())
 	}
 
 	if *replayPath != "" {
-		runReplay(ctx, cfg, *replayPath)
+		runReplay(ctx, st, cfg, *replayPath)
 		return
 	}
 
-	h := newHost(cfg, th, sp)
+	h := newHost(st, cfg, th, sp)
 	h.Start()
 	defer h.Stop()
 
-	src := source.New(source.Config{RoomNo: cfg.RoomID, AtNames: cfg.AtNames, Sink: func(ev rules.Event) {
-		in, ok := rl.Match(ev, time.Now())
+	go func() {
+		srv := server.New(db, sp.player).OnChange(func(next store.Settings) { applyLive(next, cfg, lr, h) })
+		if err := srv.Serve(ctx, cfg.Addr); err != nil {
+			log.Printf("后台接口退出：%v", err)
+		}
+	}()
+
+	src := source.New(source.Config{RoomNo: st.Conn.RoomID, AtNames: cfg.AtNames, Sink: func(ev rules.Event) {
+		in, ok := lr.Get().Match(ev, time.Now())
 		if !ok {
 			return
 		}
 		h.Handle(in)
 	}})
-	if strings.TrimSpace(cfg.RoomID) == "" {
-		log.Fatal("config.yaml 的 roomId 为空：边车不知道该连哪个直播间")
+	if strings.TrimSpace(st.Conn.RoomID) == "" {
+		log.Fatal("roomId 为空：边车不知道该连哪个直播间（后台页「连哪儿」里填）")
 	}
 
 	go func() {
@@ -130,21 +161,21 @@ func main() {
 			case <-ctx.Done():
 				return
 			case now := <-tk.C:
-				if in, ok := rl.NextGuide(now); ok {
+				if in, ok := lr.Get().NextGuide(now); ok {
 					h.Handle(in)
 				}
-				if in, ok := rl.NextIdle(now, src.LastFrame()); ok {
+				if in, ok := lr.Get().NextIdle(now, src.LastFrame()); ok {
 					h.Handle(in)
 				}
 			}
 		}
 	}()
 
-	log.Printf("连直播间 %s 中…", cfg.RoomID)
+	log.Printf("连直播间 %s 中…", st.Conn.RoomID)
 	c, err := live.New(live.Config{
-		RoomID:  cfg.RoomID,
+		RoomID:  st.Conn.RoomID,
 		Handler: src.Handler(),
-		Cookie:  cfg.Cookie,
+		Cookie:  st.Conn.Cookie,
 		Logger:  func(f string, a ...any) { log.Printf("[sdk] "+f, a...) },
 	})
 	if err != nil {
@@ -155,10 +186,42 @@ func main() {
 	}
 }
 
-func newHost(cfg config.Config, th host.Thinker, sp host.Speaker) *host.Host {
+// applyLive 把刚存下的配置推到正在跑的边车上：换表 + 按库里状态开闭麦。
+func applyLive(next store.Settings, cfg config.Config, lr *liveRules, h *host.Host) {
+	rc := rulesFrom(next, cfg)
+	nrl, err := rules.New(rc)
+	if err != nil {
+		log.Printf("新配置没生效（保留旧表）：%v", err)
+		return
+	}
+	lr.Set(nrl)
+	h.SetEnabled(!next.Muted)
+	log.Printf("配置已热生效：%d 条规则，%s", len(next.Rules), map[bool]string{true: "闭麦中", false: "开口中"}[next.Muted])
+}
+
+// liveRules 一张可替换的规则表：读多写少，锁够用即可。
+type liveRules struct {
+	mu sync.Mutex
+	rl *rules.Rules
+}
+
+func (l *liveRules) Get() *rules.Rules {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rl
+}
+
+func (l *liveRules) Set(rl *rules.Rules) {
+	l.mu.Lock()
+	l.rl = rl
+	l.mu.Unlock()
+}
+
+func newHost(st store.Settings, cfg config.Config, th host.Thinker, sp host.Speaker) *host.Host {
 	hcfg := host.DefaultConfig()
-	hcfg.Enabled = true
-	hcfg.RoomNo = cfg.RoomID
+	// 闭麦状态来自库：重启把主播的开关悄悄改回"开"，比不响更糟。
+	hcfg.Enabled = !st.Muted
+	hcfg.RoomNo = st.Conn.RoomID
 	hcfg.CooldownSec = cfg.Gate.CooldownSec
 	hcfg.GlobalGapSec = cfg.Gate.GlobalGapSec
 	hcfg.QueueSize = cfg.Gate.QueueSize
@@ -175,23 +238,74 @@ func newHost(cfg config.Config, th host.Thinker, sp host.Speaker) *host.Host {
 
 // rulesFrom 把 YAML 的闸门秒数换成 rules 的时长口径。
 // 进场冷却沿用 welcomeGapSec：同一个人在两场配置里不该有两个"多久再欢迎一次"。
-func rulesFrom(cfg config.Config) rules.Config {
+func rulesFrom(st store.Settings, cfg config.Config) rules.Config {
 	rc := rules.Config{
-		RoomNo:        cfg.RoomID,
+		RoomNo:        st.Conn.RoomID,
 		EnterCooldown: time.Duration(cfg.Gate.WelcomeGapSec) * time.Second,
 		GiftCooldown:  time.Duration(cfg.Gate.CooldownSec) * time.Second,
 		ChatCooldown:  time.Duration(cfg.Gate.CooldownSec) * time.Second,
-		EnterLine:     cfg.EnterLine,
-		Guide:         cfg.GuideLines,
 		GuideEvery:    time.Duration(cfg.Gate.GuideEverySec) * time.Second,
-		IdleLines:     cfg.IdleLines,
 		IdleAfter:     time.Duration(cfg.Gate.IdleAfterSec) * time.Second,
-		OfflineLines:  cfg.OfflineLines,
 	}
-	for _, l := range cfg.GiftLines {
-		rc.GiftLines = append(rc.GiftLines, rules.Line{Match: l.Match, Stage: l.Stage, Lines: l.Lines})
+	// 页面上那一列"什么时候 → 说什么"就是这张表：按行序当优先级。
+	// 引导/兜底/收场这三类由行序里的 moment 认出来，其余当礼物/进场/弹幕的答谢话术。
+	for i, r := range st.Rules {
+		if !r.Enabled {
+			continue
+		}
+		switch {
+		case strings.Contains(r.Moment, "每"):
+			rc.Guide = append(rc.Guide, r.Line)
+		case strings.Contains(r.Moment, "安静"):
+			rc.IdleLines = append(rc.IdleLines, r.Line)
+		case strings.Contains(r.Moment, "下播"):
+			rc.OfflineLines = append(rc.OfflineLines, r.Line)
+		case strings.Contains(r.Moment, "进"):
+			if i == 0 || rc.EnterLine == "" {
+				rc.EnterLine = r.Line
+			}
+		default:
+			rc.GiftLines = append(rc.GiftLines, rules.Line{Match: giftKey(r.Moment), Lines: []string{r.Line}})
+		}
 	}
 	return rc
+}
+
+// giftKey 从"有人送嘉年华"这类中文行名里取出礼物名。取不出来就返回空串——
+// 空 Match 在 rules 里等于不命中，宁可这条哑掉，也不要拿整句中文去当匹配串。
+func giftKey(moment string) string {
+	i := strings.Index(moment, "送")
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimSpace(moment[i+1:])
+}
+
+// seed 把 YAML 出厂值灌进库（只在库空时调用一次）。
+func seed(cfg config.Config) store.Settings {
+	st := store.Settings{
+		Conn: store.Conn{RoomID: cfg.RoomID, Cookie: cfg.Cookie},
+		Voice: store.Voice{Engine: cfg.TTS.Kind, BaseURL: cfg.TTS.BaseURL, APIKey: cfg.TTS.APIKey,
+			Model: cfg.TTS.Model, Timbre: cfg.TTS.Voice, Speed: cfg.TTS.Speed, Device: cfg.TTS.DeviceName},
+	}
+	if cfg.EnterLine != "" {
+		st.Rules = append(st.Rules, store.Rule{Moment: "有人进直播间", Line: cfg.EnterLine, Enabled: true})
+	}
+	for _, l := range cfg.GiftLines {
+		for _, line := range l.Lines {
+			st.Rules = append(st.Rules, store.Rule{Moment: "有人送" + l.Match, Line: line, Enabled: true})
+		}
+	}
+	for _, g := range cfg.GuideLines {
+		st.Rules = append(st.Rules, store.Rule{Moment: "没人说话时每 3 分钟", Line: g, Enabled: true})
+	}
+	for _, i := range cfg.IdleLines {
+		st.Rules = append(st.Rules, store.Rule{Moment: "安静满 1 分钟", Line: i, Enabled: true})
+	}
+	for _, o := range cfg.OfflineLines {
+		st.Rules = append(st.Rules, store.Rule{Moment: "主播下播", Line: o, Enabled: true})
+	}
+	return st
 }
 
 // runReplay 用同一套 rules，把帧文件打在虚拟钟上跑一遍。
@@ -199,7 +313,7 @@ func rulesFrom(cfg config.Config) rules.Config {
 //
 // 刻意不复用线上那个 host：一是回放不该抢主播的声卡，二是全局间隔在虚拟钟下会
 // 把绝大多数句子挡掉（一场虚拟 7 分钟只放得进十几句），那样"收下几句"就不是链路结论了。
-func runReplay(ctx context.Context, cfg config.Config, path string) {
+func runReplay(ctx context.Context, st store.Settings, cfg config.Config, path string) {
 	frames, err := replay.Load(path)
 	if err != nil {
 		log.Fatal(err)
@@ -214,24 +328,27 @@ func runReplay(ctx context.Context, cfg config.Config, path string) {
 	h.Start()
 	defer h.Stop()
 
+	// 回放的表 = 线上那张表（库里现在存的），不是 YAML：验收必须打在真配置上。
+	rc := rulesFrom(st, cfg)
 	res := replay.Run(ctx, replay.Session{
 		Frames:       frames,
 		Step:         time.Millisecond,
-		GuideEvery:   time.Duration(cfg.Gate.GuideEverySec) * time.Second,
-		IdleAfter:    time.Duration(cfg.Gate.IdleAfterSec) * time.Second,
-		GuideLines:   cfg.GuideLines,
-		IdleLines:    cfg.IdleLines,
-		OfflineLines: cfg.OfflineLines,
-		EnterLine:    cfg.EnterLine,
-		Sink:         hostFeeder(h, rulesFrom(cfg)),
+		GuideEvery:   rc.GuideEvery,
+		IdleAfter:    rc.IdleAfter,
+		GuideLines:   rc.Guide,
+		IdleLines:    rc.IdleLines,
+		OfflineLines: rc.OfflineLines,
+		EnterLine:    rc.EnterLine,
+		GiftLines:    rc.GiftLines,
+		Sink:         hostFeeder(h, rc),
 	})
 	time.Sleep(300 * time.Millisecond) // 让编排器把队列里剩下的句子走完
-	st := h.Stats()
+	stats := h.Stats()
 	log.Printf("回放结束 递到编排器=%d 分布=%v 最后观众帧=%s",
 		res.Emitted, res.ByKind, res.LastFrame.UTC().Format("15:04:05"))
 	log.Printf("编排器：收下=%v 播出=%v 被规则挡=%v 队列满丢=%v 静音出口收到=%d 句",
-		st["queued"], st["said"], st["skipped"], st["dropped"], sp.count())
-	if n, _ := st["said"].(int64); n == 0 {
+		stats["queued"], stats["said"], stats["skipped"], stats["dropped"], sp.count())
+	if n, _ := stats["said"].(int64); n == 0 {
 		log.Printf("结论：一句都没播出去 —— 这不是交付，是静音贴纸")
 	}
 }
@@ -282,11 +399,11 @@ type speaker struct {
 	cfg    tts.Config
 }
 
-func newSpeaker(cfg config.Config, tcfg tts.Config) *speaker {
+func newSpeaker(device string, tcfg tts.Config) *speaker {
 	p := tts.NewPlayer()
 	// 选了设备就必须走认设备的原生通道：装了 ffplay 时它只认系统默认设备，
 	// 声音会悄悄跑到别的轨上，这是主仓踩过的坑。
-	if dev := strings.TrimSpace(cfg.TTS.DeviceName); dev != "" {
+	if dev := strings.TrimSpace(device); dev != "" {
 		if d, ok := tts.RouteDevice(dev); ok {
 			tts.ApplyRoute(p)
 			log.Printf("输出设备=%s", d.Name)
