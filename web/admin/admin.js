@@ -10,32 +10,6 @@
   // 作者把水印烤进了贴图，内置"水印消除"表情=把这个参数置 1；每帧写，idle 盖不回来。
   var HOLD = { Paramcol_3: 1 };
 
-  function show(name) {
-    var btn = document.querySelector('.tab[data-tab="' + name + '"]');
-    var panel = document.querySelector('[data-panel="' + name + '"]');
-    if (!btn || !panel) return;
-    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
-    document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
-    btn.classList.add("active");
-    panel.classList.add("active");
-  }
-
-  // 出图用：?tab=rules 直接落在那一页，省得每张图都要模拟点击。
-  var want = new URLSearchParams(location.search).get("tab");
-  if (want) show(want);
-
-  // 库只认 body：舞台挂在文档根上，得搬进侧栏里才能被裁住。resize 后会重挂，所以周期检查。
-  function adopt() {
-    var st = document.getElementById("oml2d-stage");
-    var box = document.getElementById("live2d");
-    if (st && box && st.parentElement !== box) box.appendChild(st);
-    // 看板娘的菜单/气泡/状态条在后台预览里是噪声；类名实测不止一套，CSS 选择器会漏，这里兜一层。
-    document.querySelectorAll('[class*="oml2d"]').forEach(function (el) {
-      var n = (el.className || "") + " " + (el.id || "");
-      if (/tips|status|menu|loading|icon/.test(n)) el.style.setProperty("display", "none", "important");
-    });
-  }
-
   function hush() {
     document.querySelectorAll('[class*="oml2d"]').forEach(function (el) {
       var n = (el.className || "") + " " + (el.id || "");

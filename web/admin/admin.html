@@ -8,88 +8,47 @@
 </head>
 <body>
 <div class="app">
-  <aside class="nav">
-    <div class="brand">大肥鱼</div>
-    <nav>
-      <button class="tab active" data-tab="connect">连接</button>
-      <button class="tab" data-tab="voice">声音</button>
-      <button class="tab" data-tab="rules">播报规则</button>
-      <button class="tab" data-tab="gate">闸门</button>
-      <button class="tab" data-tab="interact">互动</button>
-      <button class="tab" data-tab="music">点歌</button>
-    </nav>
-    <div class="status">
-      <div class="dot on"></div><span>已连直播间</span>
-      <div class="kv"><b>在线</b><span>218</span></div>
-      <div class="kv"><b>今日播出</b><span>1,842 句</span></div>
-    </div>
-  </aside>
-
   <main class="pane">
-    <section class="panel active" data-panel="connect">
-      <h2>连接</h2>
+    <header class="head">
+      <div class="brand">大肥鱼</div>
+      <div class="live"><span class="dot on"></span>已连 731905913385 · 在线 218</div>
+      <div class="headbtns">
+        <button class="ghost">闭麦</button>
+        <button class="primary">保存</button>
+      </div>
+    </header>
+
+    <section class="group">
+      <h2>连哪儿</h2>
       <label class="row"><span>房间号</span><input value="731905913385"></label>
-      <label class="row"><span>Cookie</span><input type="password" placeholder="留空＝游客" value=""></label>
-      <label class="row"><span>失败退避</span><input class="num" value="20"><i>秒</i></label>
-      <label class="row"><span>下播判定</span><input class="num" value="3"><i>轮</i></label>
+      <label class="row"><span>Cookie</span><input type="password" placeholder="留空＝游客"></label>
     </section>
 
-    <section class="panel" data-panel="voice">
-      <h2>声音</h2>
-      <label class="row"><span>引擎</span>
-        <select><option>Piper · 本地离线</option><option>Kokoro · 本地离线</option><option>MiniMax · 云端</option><option>edge-tts</option><option>Windows SAPI</option></select>
-      </label>
-      <label class="row"><span>地址</span><input value="http://127.0.0.1:9880/v1"></label>
+    <section class="group">
+      <h2>从哪儿出声</h2>
       <label class="row"><span>音色</span>
         <select><option>zh_CN-huayan-medium</option><option>zf_xiaobei</option></select>
       </label>
-      <label class="row"><span>语速</span><input class="num" value="1.0"></label>
       <label class="row"><span>输出设备</span>
         <select><option>CABLE Input (VB-Audio Virtual Cable)</option><option>Voicemeeter Input (VB-Audio)</option><option>扬声器 (Realtek)</option></select>
       </label>
-      <button class="ghost">试听</button>
+      <button class="ghost wide">试听一句</button>
     </section>
 
-    <section class="panel" data-panel="rules">
-      <h2>播报规则<span class="hint">顺序＝优先级</span></h2>
+    <section class="group">
+      <h2>她说什么<span class="hint">顺序＝优先级 · 关掉就不吭声</span></h2>
       <table class="grid">
-        <thead><tr><th>段</th><th>触发</th><th>话术</th><th>冷却</th><th></th></tr></thead>
+        <thead><tr><th>什么时候</th><th>说什么</th><th></th></tr></thead>
         <tbody>
-          <tr><td>礼物答谢</td><td>嘉年华 · 任意连击</td><td>感谢 {user} 的嘉年华</td><td>30s</td><td class="sw on"></td></tr>
-          <tr><td>礼物答谢</td><td>小心心 · ≥10 连</td><td>{user} 连了 {count} 个小心心</td><td>30s</td><td class="sw on"></td></tr>
-          <tr><td>进场欢迎</td><td>进入直播间</td><td>欢迎 {user}</td><td>120s</td><td class="sw on"></td></tr>
-          <tr><td>玩法引导</td><td>每 180s</td><td>2 条轮播</td><td>—</td><td class="sw on"></td></tr>
-          <tr><td>冷场兜底</td><td>安静 60s</td><td>2 条轮播</td><td>—</td><td class="sw on"></td></tr>
-          <tr><td>下播收场</td><td>控制帧</td><td>2 条轮播</td><td>—</td><td class="sw on"></td></tr>
-          <tr><td>点赞冲量</td><td>—</td><td>未实现</td><td>—</td><td class="sw off"></td></tr>
+          <tr><td>有人送嘉年华</td><td><input value="感谢 {user} 的嘉年华"></td><td class="sw on"></td></tr>
+          <tr><td>连到 10 个小心心</td><td><input value="{user} 连了 {count} 个小心心"></td><td class="sw on"></td></tr>
+          <tr><td>有人进直播间</td><td><input value="欢迎 {user}"></td><td class="sw on"></td></tr>
+          <tr><td>没人说话时每 3 分钟</td><td><input value="想看下一局的扣个 1"></td><td class="sw on"></td></tr>
+          <tr><td>安静满 1 分钟</td><td><input value="刚进来的先坐，一会儿开新一轮"></td><td class="sw on"></td></tr>
+          <tr><td>主播下播</td><td><input value="今天就到这里，先下了"></td><td class="sw on"></td></tr>
         </tbody>
       </table>
-      <button class="ghost">加一行</button>
-    </section>
-
-    <section class="panel" data-panel="gate">
-      <h2>闸门</h2>
-      <label class="row"><span>单句上限</span><input class="num" value="60"><i>字</i></label>
-      <label class="row"><span>全局间隔</span><input class="num" value="6"><i>秒</i></label>
-      <label class="row"><span>队列上限</span><input class="num" value="2"><i>句</i></label>
-      <label class="row"><span>引导周期</span><input class="num" value="180"><i>秒</i></label>
-      <label class="row"><span>冷场阈值</span><input class="num" value="60"><i>秒</i></label>
-    </section>
-
-    <section class="panel" data-panel="interact">
-      <h2>互动</h2>
-      <label class="row"><span>回话来源</span><select><option>模板</option><option>LLM</option></select></label>
-      <label class="row"><span>LLM 地址</span><input placeholder="留空＝不调"></label>
-      <label class="row"><span>人设</span><input value="直播间里的大肥鱼"></label>
-      <label class="row"><span>@ 别名</span><input value="大肥鱼"></label>
-      <div class="sub"><span class="sw off"></span>发评论</div>
-      <div class="locked">发评论未开放</div>
-    </section>
-
-    <section class="panel" data-panel="music">
-      <h2>点歌</h2>
-      <div class="sub"><span class="sw off"></span>启用</div>
-      <div class="locked">点歌未开放</div>
+      <button class="ghost wide">加一条</button>
     </section>
   </main>
 
@@ -100,10 +59,6 @@
         <div class="caption">感谢 老板甲 的嘉年华</div>
         <div class="credit">模型：Mao绒绒家园</div>
       </div>
-    </div>
-    <div class="stagefoot">
-      <button class="ghost">闭麦</button>
-      <button class="primary">保存</button>
     </div>
   </aside>
 </div>

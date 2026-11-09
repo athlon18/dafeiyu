@@ -19,30 +19,20 @@ body {
   overflow: hidden;
 }
 
-.app { display: grid; grid-template-columns: 168px 1fr 372px; height: 100vh; }
+.app { display: grid; grid-template-columns: 1fr 372px; height: 100vh; }
 
-/* 左：导航 */
-.nav { background: var(--pane); border-right: 1px solid var(--line); padding: 18px 0; display: flex; flex-direction: column; }
-.brand { font-size: 17px; font-weight: 600; letter-spacing: .06em; padding: 0 18px 18px; color: var(--fin); }
-.tab {
-  display: block; width: 100%; text-align: left; background: none; border: 0;
-  color: var(--dim); padding: 10px 18px; font-size: 14px; cursor: pointer;
-  border-left: 2px solid transparent;
-}
-.tab:hover { color: var(--ink); }
-.tab.active { color: var(--ink); background: var(--fin-dim); border-left-color: var(--fin); }
-.status { margin-top: auto; padding: 16px 18px 0; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
-.status .kv { width: 100%; display: flex; justify-content: space-between; }
-.status .kv b { font-weight: 400; }
-.status .kv span { color: var(--ink); font-variant-numeric: tabular-nums; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); align-self: center; }
-.dot.on { background: var(--fin); box-shadow: 0 0 0 3px var(--fin-dim); }
-
-/* 中：配置 */
+/* 中：一屏配置 *//* 中：配置 */
 .pane { padding: 22px 26px; overflow: auto; }
-.panel { display: none; }
-.panel.active { display: block; }
-h2 { font-size: 15px; font-weight: 600; margin-bottom: 18px; display: flex; gap: 10px; align-items: baseline; }
+
+.head { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+.head .brand { font-size: 17px; font-weight: 600; color: var(--fin); }
+.head .live { color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 7px; }
+.head .headbtns { margin-left: auto; display: flex; gap: 10px; }
+.group { margin-bottom: 26px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+.dot.on { background: var(--fin); box-shadow: 0 0 0 3px var(--fin-dim); }
+button.wide { margin-top: 2px; }
+h2 { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; gap: 10px; align-items: baseline; color: var(--ink); }
 .hint { color: var(--dim); font-size: 12px; font-weight: 400; }
 .row { display: grid; grid-template-columns: 92px auto auto; justify-content: start; align-items: center; gap: 10px; margin-bottom: 12px; }
 .row > span { color: var(--dim); }
@@ -56,11 +46,16 @@ input, select {
 input:focus, select:focus { outline: 0; border-color: var(--fin); }
 input::placeholder { color: #55606f; }
 
-.grid { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-.grid th { text-align: left; color: var(--dim); font-weight: 400; font-size: 12px; padding: 0 10px 8px; }
-.grid td { background: var(--card); border-top: 1px solid var(--line); padding: 9px 10px; font-size: 13px; }
-.grid tr:first-child td { border-top: 0; }
-.grid td:nth-child(4) { color: var(--dim); font-variant-numeric: tabular-nums; }
+.grid { width: 100%; border-collapse: separate; border-spacing: 0 6px; margin-bottom: 12px; }
+.grid th { text-align: left; color: var(--dim); font-weight: 400; font-size: 12px; padding: 0 10px 2px; }
+.grid td { background: var(--card); padding: 8px 10px; font-size: 13px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.grid td:first-child { border-left: 1px solid var(--line); border-radius: 4px 0 0 4px; }
+.grid td:last-child { border-right: 1px solid var(--line); border-radius: 0 4px 4px 0; }
+
+.grid td:first-child { color: var(--dim); white-space: nowrap; }
+.grid td input { background: transparent; border: 1px solid transparent; }
+.grid td input:hover, .grid td input:focus { background: var(--bg); border-color: var(--fin); }
+.grid td:last-child { width: 46px; text-align: right; }
 
 .sw { width: 30px; height: 17px; border-radius: 9px; background: #2b3441; position: relative; display: inline-block; vertical-align: middle; }
 .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #6b7787; }
@@ -78,8 +73,8 @@ button.ghost:hover { color: var(--ink); border-color: var(--fin); }
 button.primary { background: var(--fin); border: 0; color: #06231f; font-weight: 600; }
 
 /* 右：形象台 */
-.stage { background: var(--pane); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
-.canvas { position: relative; flex: 1; overflow: hidden; background: radial-gradient(120% 90% at 50% 15%, #1b2c3a 0%, #0c1117 70%); }
+.stage { background: var(--pane); border-left: 1px solid var(--line); }
+.canvas { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 15%, #1b2c3a 0%, #0c1117 70%); }
 /* 预览台照搬主仓叠层的口径：库只认"竖屏 1080×1920 的设计画布"，
    动 stage 的尺寸会把库自己的算法算乱（实测形象消失），所以整块设计画布再缩进侧栏。 */
 .design { position: absolute; top: 0; left: 0; width: 1080px; height: 1920px;
@@ -99,4 +94,4 @@ button.primary { background: var(--fin); border: 0; color: #06231f; font-weight:
 }
 .credit { position: absolute; left: 34px; bottom: 40px; font-size: 26px; color: rgba(255, 255, 255, .4); }
 .nofallback { position: absolute; top: 45%; left: 0; width: 100%; text-align: center; color: #6b7787; font-size: 30px; }
-.stagefoot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 14px; border-top: 1px solid var(--line); }
+
