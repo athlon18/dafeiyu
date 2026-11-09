@@ -1,0 +1,5 @@
+github.com/athlon18/douyin-live-client v0.0.0-20261108235743-a3b532a29214 h1:L+FyP/qRfZqVdc+7RC0pNLMG+SR9Znh64w8NqrJmh60=
+github.com/athlon18/douyin-live-client v0.0.0-20261108235743-a3b532a29214/go.mod h1:OhrCRq6CSvBcrTMGNfgerZWE5mXEhANPKV7vStOGZMM=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=

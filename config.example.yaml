@@ -1,0 +1,68 @@
+roomId: ""
+cookie: ""
+addr: ":8420"
+dataDir: data
+
+atNames:
+  - 大肥鱼
+
+guardWords: []
+
+llm:
+  apiKey: ""          # 留空=不调 LLM，弹幕也只走模板
+  baseUrl: https://api.openai.com/v1
+  model: gpt-4o-mini
+  persona: ""
+
+tts:
+  kind: openai
+  baseUrl: http://127.0.0.1:9880/v1   # Piper 本地网关；Kokoro=9884 MiniMax=9883
+  model: tts-1
+  voice: zh_CN-huayan-medium
+  speed: 1.0
+  timeoutSec: 30
+  deviceName: ""      # 填声卡名片段（如 CABLE-Auxiliary）就强制走本机设备路由
+
+gate:                 # 前 7 项与 douyinlive 出厂值一致，后 3 项是本仓新增的冷场周期
+  cooldownSec: 30
+  globalGapSec: 6
+  queueSize: 2
+  maxSayRunes: 60
+  llmTimeout: 20
+  historyTurns: 3
+  welcomeGapSec: 120
+  idleGapSec: 90
+  guideEverySec: 180
+  idleAfterSec: 60
+
+enterLine: "欢迎 {user} 进入直播间"
+
+idleLines:
+  - "有想法的扣个 1，我听听"
+  - "刚进来的先坐，一会儿开新一轮"
+
+guideLines:
+  - "送出任意礼物就能触发一次互动"
+  - "评论区打关键词就能点歌"
+
+offlineLines:
+  - "今天就到这里，先下了"
+  - "这轮结束了，下次接着玩"
+
+giftLines:
+  - match: 嘉年华
+    stage: 0
+    lines:
+      - "感谢 {user} 的嘉年华"
+  - match: 超级跑车
+    stage: 0
+    lines:
+      - "感谢 {user} 的超级跑车"
+  - match: 小心心
+    stage: 2
+    lines:
+      - "感谢 {user} 连的小心心"
+  - match: 抖音
+    stage: 1
+    lines:
+      - "感谢 {user} 的小礼物"

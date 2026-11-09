@@ -1,0 +1,7 @@
+data/host/model/
+data/tts/
+*.db
+*.log
+config.yaml
+dafeiyu.exe
+.gotmp/
