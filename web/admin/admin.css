@@ -73,7 +73,7 @@ button.ghost:hover { color: var(--ink); border-color: var(--fin); }
 button.primary { background: var(--fin); border: 0; color: #06231f; font-weight: 600; }
 
 /* 右：形象台 */
-.stage { background: var(--pane); border-left: 1px solid var(--line); }
+.stage { position: relative; background: var(--pane); border-left: 1px solid var(--line); }
 .canvas { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 15%, #1b2c3a 0%, #0c1117 70%); }
 /* 预览台照搬主仓叠层的口径：库只认"竖屏 1080×1920 的设计画布"，
    动 stage 的尺寸会把库自己的算法算乱（实测形象消失），所以整块设计画布再缩进侧栏。 */

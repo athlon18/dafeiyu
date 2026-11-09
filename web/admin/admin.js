@@ -48,44 +48,61 @@
     fallback(String(e && e.message || e)); return;
   }
 
-  var core = null, hooked = null, phase = 0, held = false;
+  var core = null, hooked = null, phase = 0, held = false, reads = "";
 
-  function apply() {
-    if (!core) return;
+  function writeHold() {
+    if (!core) return false;
+    var ok = true;
     for (var k in HOLD) {
       try {
         core.setParameterValueById(k, HOLD[k]);
         // 写进去不等于按住：读回来确认，否则角标会谎报"水印已消除"。
-        if (typeof core.getParameterValueById === "function" && core.getParameterValueById(k) >= 0.99) held = true;
-      } catch (e) {}
+        var got = typeof core.getParameterValueById === "function" ? core.getParameterValueById(k) : NaN;
+        reads = k + "=" + got;
+        if (!(got >= 0.99)) ok = false;
+      } catch (e) { ok = false; }
     }
+    return ok;
+  }
+
+  function apply() {
+    if (!core) return;
+    held = writeHold() || held;
     // 设计图里"正在说话"是假的：固定正弦当包络，只为让嘴动起来。
-    phase += 0.22;
+    phase += 0.3;
     var val = 0.5 * (0.5 + 0.5 * Math.sin(phase));
     try { core.setParameterValueById("ParamMouthOpenY", val); } catch (e) {}
   }
 
-  // 库在 resize 时会换模型实例，钩子只挂一次就会挂在旧的上面（表现：一开始正常，后来不动）。
-  function poll() {
+  // 不靠库的事件钩子（挂没挂上看不见就是哑的）：自己按帧写，写完读回来。
+  // 库在 resize 时会换模型实例，所以每轮都重新认一次当前实例。
+  function tick() {
     var oml = window.__oml;
     var mod = oml && oml.models && oml.models.model;
     var im = mod && mod.internalModel;
     var c = im && typeof im.coreModel === "function" ? im.coreModel() : (im && im.coreModel);
-    if (im && c && im !== hooked) {
+    if (c && c !== core) {
       core = c; hooked = im;
-      try { im.on("beforeModelUpdate", apply); } catch (e) {}
-      // 参数写不动时退回表情：表情本身就是把同一个参数置 1。
-      if (!held) { try { mod.setExpression && mod.setExpression("13 水印消除"); } catch (e) {} }
+      try { im.on("beforeModelUpdate", apply); } catch (e) {} // 有钩子更好，没有也不靠它
+    }
+    apply();
+    if (core && !held) {
+      // 参数写不动就退回表情：表情本身就是把同一个参数置 1。
+      try { mod && mod.expression && mod.expression("13 水印消除"); } catch (e) {}
+      try { mod && mod.setExpression && mod.setExpression("13 水印消除"); } catch (e) {}
     }
     adopt();
-    setTimeout(poll, 800);
   }
-  poll();
+  setInterval(tick, 50);
+  tick();
+
+  window.__wm = function () { return { held: held, reads: reads, hasCore: !!core }; };
 
   setTimeout(function () {
     if (!document.querySelector("#live2d canvas")) fallback("模型没渲染出来");
     // 水印到底关掉没有，得能在画面上自证，不能只说"我写了参数"。
     var b = document.querySelector(".credit");
-    if (b) b.textContent = held ? "模型：Mao绒绒家园" : "模型：Mao绒绒家园 · 水印未消除";
+    if (b) b.textContent = held ? "模型：Mao绒绒家园 · " + reads
+      : "模型：Mao绒绒家园 · 水印未消除 " + reads;
   }, 6000);
 })();
