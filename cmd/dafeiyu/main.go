@@ -180,19 +180,38 @@ func main() {
 	}()
 
 	log.Printf("连直播间 %s 中…", st.Conn.RoomID)
-	c, err := live.New(live.Config{
-		RoomID:  st.Conn.RoomID,
-		Handler: src.Handler(),
-		Cookie:  st.Conn.Cookie,
-		Logger:  func(f string, a ...any) { log.Printf("[sdk] "+f, a...) },
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := c.Start(ctx); err != nil {
-		log.Printf("连接结束：%v", err)
+	// 房间未开播/被风控**不许把整个进程带走**：后台接口和 OBS 叠层还得活着。
+	// 之前这里 Start 一返回 main 就结束了，守护每 45 秒重拉一次，
+	// OBS 在那个空档里连不上页面就渲染一张白色错误页——看着就像"叠层背景不透明"。
+	for ctx.Err() == nil {
+		c, err := live.New(live.Config{
+			RoomID:  st.Conn.RoomID,
+			Handler: src.Handler(),
+			Cookie:  st.Conn.Cookie,
+			Logger:  func(f string, a ...any) { log.Printf("[sdk] "+f, a...) },
+		})
+		if err != nil {
+			log.Printf("建连接失败：%v", err)
+			return
+		}
+		if err := c.Start(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("连接结束：%v；叠层与后台继续提供，%s 后重试房间", err, retryAfter)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(retryAfter):
+			}
+			continue
+		}
+		return
 	}
 }
+
+// retryAfter 是房间判死后的重试间隔。太短会被抖音当爬虫，太长主播开了播这边还哑着。
+const retryAfter = 30 * time.Second
 
 // applyLive 把刚存下的配置推到正在跑的边车上：换表 + 按库里状态开闭麦。
 func applyLive(next store.Settings, cfg config.Config, lr *liveRules, h *host.Host) {

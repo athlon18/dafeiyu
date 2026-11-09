@@ -64,6 +64,7 @@
       hooked = im;
     }
     fitStage();
+    hush();
     applyMouth();
     requestAnimationFrame(drive);
   }
@@ -97,6 +98,16 @@
     var k = Math.min(vw / DESIGN_W, vh / DESIGN_H);
     stg.style.transform = "translate(" + ((vw - DESIGN_W * k) / 2) + "px," + ((vh - DESIGN_H * k) / 2) + "px) scale(" + k + ")";
     stg.style.transformOrigin = "0 0";
+  }
+
+  // 看板娘自带的提示气泡/菜单/状态条在直播画面里是噪声。
+  // 必须按 id 和 class 两种都按住：实测气泡节点是 id="oml2d-tips"、class 为空，
+  // 只写 [class*=...] 选择器会整个漏掉（就出现在 OBS 截图里那个蓝气泡）。
+  function hush() {
+    var sel = "[id*='oml2d-tip'],[id*='oml2d-menu'],[id*='oml2d-status'],[class*='oml2d-tips'],[class*='-tips'],[class*='oml2d-status'],[class*='oml2d-menu'],[class*='oml2d-loading'],[class*='oml2d-icon']";
+    document.querySelectorAll(sel).forEach(function (el) {
+      el.style.setProperty("display", "none", "important");
+    });
   }
 
   function boot() {
