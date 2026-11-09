@@ -36,7 +36,13 @@ go run ./cmd/dafeiyu                                  # 连真房间
 
 ## OBS
 
-- 声音：`tts.deviceName` 填虚拟音频线名（如 `CABLE-Auxiliary`），OBS 把该线作为音频输入。
+- 声音：`tts.deviceName` 填虚拟音频线名，OBS 抓它的**播放端**。本机实测的三条路：
+  - VB-Cable：Windows 输出设成 `CABLE Input`，OBS 音频输入抓 `CABLE Output`
+  - Voicemeeter：Windows 输出设成 `Voicemeeter Input`，OBS 抓 `Voicemeeter Out B1`
+  - 直接跟系统默认：`deviceName` 留空
+
+  填设备名是**子串匹配**（不分大小写），所以别只填 `CABLE`——`CABLE Input` 和 `CABLE Output` 都含这三个字，
+  会撞上排在前面的那条。`-list-devices` 打出来的名字整段抄进去最稳。
   填了设备名后会强制走认设备的原生通道，不会被装了 ffplay 抢走（ffplay 只认系统默认设备）。
 - 画面：浏览器源（第三刀起提供 `/overlay`）。
 
