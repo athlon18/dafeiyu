@@ -1,7 +1,10 @@
 data/host/model/
 data/tts/
 *.db
+*.db-shm
+*.db-wal
 *.log
 config.yaml
 dafeiyu.exe
 .gotmp/
+data/host/lib/
