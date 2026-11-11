@@ -21,6 +21,7 @@ import (
 	"github.com/athlon18/dafeiyu/config"
 	"github.com/athlon18/dafeiyu/guard"
 	"github.com/athlon18/dafeiyu/host"
+	"github.com/athlon18/dafeiyu/internal/slotreg"
 	"github.com/athlon18/dafeiyu/replay"
 	"github.com/athlon18/dafeiyu/rules"
 	"github.com/athlon18/dafeiyu/server"
@@ -161,6 +162,10 @@ func main() {
 		log.Fatal("roomId 为空：边车不知道该连哪个直播间（后台页「连哪儿」里填）")
 	}
 
+	// 作为外部插槽向基座自注册（capability=daemon.observe：只心跳供管理面观测，不占前缀）。
+	// 注册起不来不许带走语音链路：失败只记日志（基座不在 = 观测面缺一格，播报照跑）——可缺席。
+	startSlotRegister(ctx, cfg)
+
 	go func() {
 		tk := time.NewTicker(time.Second)
 		defer tk.Stop()
@@ -212,6 +217,61 @@ func main() {
 
 // retryAfter 是房间判死后的重试间隔。太短会被抖音当爬虫，太长主播开了播这边还哑着。
 const retryAfter = 30 * time.Second
+
+// startSlotRegister 把本边车作为外部插槽登进基座台账（后台协程，随 ctx 退出干净注销）。
+// Enabled=false 直接不接基座；清单不合法也只记日志、不动语音链路——注册是观测面，不是开播的前提。
+func startSlotRegister(ctx context.Context, cfg config.Config) {
+	if !cfg.Register.Enabled {
+		log.Printf("[slotreg] register.enabled=false：不向基座自注册（本边车独立跑）")
+		return
+	}
+	cl, err := slotreg.New(slotreg.Config{
+		APIBase: cfg.Register.APIBase,
+		Token:   registerToken(cfg),
+		Logf:    func(f string, a ...any) { log.Printf("[slotreg] "+f, a...) },
+		Manifest: slotreg.Manifest{
+			ModuleID:        cfg.Register.ModuleID,
+			Name:            cfg.Register.Name,
+			Version:         cfg.Register.Version,
+			BaseURL:         registerBaseURL(cfg),
+			Capabilities:    []string{"daemon.observe"},
+			ContractVersion: slotreg.ContractVersion,
+			Provider:        cfg.Register.Provider,
+			Description:     cfg.Register.Description,
+			Group:           cfg.Register.Group,
+		},
+	})
+	if err != nil {
+		log.Printf("[slotreg] 注册配置不合法，跳过自注册：%v", err)
+		return
+	}
+	go func() {
+		if err := cl.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("[slotreg] 自注册退出（基座不可达或协商被拒；语音链路不受影响）：%v", err)
+		}
+	}()
+}
+
+// registerToken 内部口令：config.register.token 优先，留空回落环境变量 DY_INTERNAL_TOKEN
+// （与基座各角色 .run/env 里的 DY_INTERNAL_TOKEN 同源；本机单用户基座没配口令时两者都空、走免口令放行）。
+func registerToken(cfg config.Config) string {
+	if t := strings.TrimSpace(cfg.Register.Token); t != "" {
+		return t
+	}
+	return strings.TrimSpace(os.Getenv("DY_INTERNAL_TOKEN"))
+}
+
+// registerBaseURL 本边车对外地址（供基座读时探活）：显式配置优先，否则从 addr 推 http://127.0.0.1:8420。
+func registerBaseURL(cfg config.Config) string {
+	if b := strings.TrimSpace(cfg.Register.BaseURL); b != "" {
+		return b
+	}
+	addr := cfg.Addr
+	if strings.HasPrefix(addr, ":") {
+		addr = "127.0.0.1" + addr
+	}
+	return "http://" + addr
+}
 
 // applyLive 把刚存下的配置推到正在跑的边车上：换表 + 按库里状态开闭麦。
 func applyLive(next store.Settings, cfg config.Config, lr *liveRules, h *host.Host) {

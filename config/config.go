@@ -25,6 +25,7 @@ type Config struct {
 	IdleLines  []string `yaml:"idleLines"`
 	GuideLines []string `yaml:"guideLines"`
 	OfflineLines []string `yaml:"offlineLines"`
+	Register   Register `yaml:"register"` // 作为外部插槽自注册进基座（见 slotreg）
 }
 
 type LLM struct {
@@ -66,6 +67,22 @@ type Rule struct {
 	Lines []string `yaml:"lines"`
 }
 
+// Register 把本边车作为【外部插槽】自注册进 douyinlive 基座：capability=daemon.observe，
+// 只心跳供管理面观测（在线/降级），不占 /api 前缀、不进转发快照。Enabled=false 就完全不出门——
+// 与"不接基座也能独立跑语音链路"同口径（注册失败也只记日志、不带走播报）。
+type Register struct {
+	Enabled     bool   `yaml:"enabled"`
+	APIBase     string `yaml:"apiBase"`  // 基座 api 可达地址，如 http://127.0.0.1:9599
+	Token       string `yaml:"token"`    // 内部口令；留空则回落环境变量 DY_INTERNAL_TOKEN
+	ModuleID    string `yaml:"moduleID"` // 上报的 moduleId
+	Name        string `yaml:"name"`
+	Version     string `yaml:"version"`
+	Group       string `yaml:"group"`    // 基座出厂拖线板名，须已登记（先板后槽：报未登记的组会 group_not_registered 被拒）
+	BaseURL     string `yaml:"baseUrl"`  // 本边车对外地址，供基座读时探活；留空由 addr 推
+	Provider    string `yaml:"provider"` // 归属标签（管理面「归属地图」分组用）
+	Description string `yaml:"description"`
+}
+
 // DefaultOfflineLines 下播收场话术。刻意不叫"告别语"——它是收场，不是催关注。
 var DefaultOfflineLines = []string{
 	"今天就到这里，先下了",
@@ -88,6 +105,11 @@ func Default() Config {
 			CooldownSec: 30, GlobalGapSec: 6, QueueSize: 2, MaxSayRunes: 60,
 			LLMTimeout: 20, HistoryTurns: 3, WelcomeGapSec: 120,
 			IdleGapSec: 90, GuideEverySec: 180, IdleAfterSec: 60,
+		},
+		Register: Register{
+			Enabled: true, APIBase: "http://127.0.0.1:9599", ModuleID: "dafeiyu",
+			Name: "大肥鱼语音播报边车", Version: "1.0.0", Group: "voice", Provider: "github",
+			Description: "抖音直播间语音播报边车：收帧→规则→合成→本机声卡；只心跳供基座观测，不占前缀",
 		},
 	}
 }
